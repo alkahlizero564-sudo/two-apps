@@ -37,7 +37,7 @@ jobs:
           SB_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           mkdir www
-          cp apps/${{ matrix.dir }}/index.html www/index.html
+          cp "$(find apps/${{ matrix.dir }} -name index.html | head -n 1)" www/index.html
           python3 scripts/inject.py
       - name: Capacitor config
         env:
