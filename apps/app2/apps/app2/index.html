@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>تطبيق الطلاب</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#EEF2F6;--card:#fff;--ink:#14213D;--mute:#5B6B82;--line:#D5DCE6;--acc:#0E7C86;--accink:#fff;--bad:#C2410C}
+@media (prefers-color-scheme:dark){:root{--bg:#0E1522;--card:#17202F;--ink:#E8EEF7;--mute:#98A6BC;--line:#2A3649;--acc:#3CB6C0;--accink:#06222A;--bad:#FB923C}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%}
+body{font-family:system-ui,"Noto Naskh Arabic",sans-serif;background:var(--bg);color:var(--ink);padding-top:env(safe-area-inset-top,0)}
+.wrap{max-width:520px;margin:0 auto;padding:24px 16px}
+h1{font-size:24px;margin:8px 0}
+.sub{color:var(--mute);margin:0 0 12px}
+label{display:block;font-size:13px;color:var(--mute);margin:14px 0 4px}
+input{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.ltr{direction:ltr;text-align:left}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:12px 16px;background:var(--acc);color:var(--accink)}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.5}
+#go{width:100%;margin-top:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid button{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.grid button.sel{background:var(--acc);color:var(--accink);border-color:var(--acc)}
+.err{color:var(--bad);font-size:13px;margin-top:10px;min-height:18px}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+header span{display:block;font-size:13px;color:var(--mute)}
+header button{padding:8px 12px}
+#stat{font-size:12px;color:var(--mute);text-align:center;padding:6px}
+#list{padding:0 14px 90px;max-width:720px;margin:0 auto}
+.post{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px}
+.post h3{margin:0 0 6px;font-size:17px}
+.post p{margin:0 0 10px;white-space:pre-wrap;line-height:1.7}
+.post img,.post video{width:100%;max-height:60vh;object-fit:contain;border-radius:10px;background:#000;display:block;margin-bottom:10px}
+.post a{display:block;text-align:center;text-decoration:none;font-weight:600;border-radius:10px;padding:10px;background:var(--acc);color:var(--accink);margin-bottom:10px}
+.meta{font-size:12px;color:var(--mute)}
+.empty{text-align:center;color:var(--mute);padding:40px 0}
+nav{position:fixed;bottom:0;right:0;left:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0)}
+nav button{flex:1;background:none;color:var(--mute);border-radius:0;padding:14px 2px;font-size:14px}
+nav button.on{color:var(--acc);box-shadow:inset 0 3px 0 var(--acc)}
+</style>
+</head>
+<body>
+<div id="login" class="wrap" hidden>
+  <h1>تطبيق الطلاب</h1>
+  <p class="sub">سجّل دخولك لمتابعة كل ما ينشره قائد دفعتك</p>
+  <label>الاسم</label>
+  <input id="name" autocomplete="name">
+  <label>رقم الهاتف</label>
+  <input id="phone" type="tel" inputmode="tel" class="ltr" placeholder="0912345678">
+  <label>التخصص</label>
+  <div id="majors" class="grid"></div>
+  <button id="go">دخول</button>
+  <div id="err" class="err"></div>
+</div>
+<div id="app" hidden>
+  <header>
+    <div><b id="who"></b><span id="mj"></span></div>
+    <button id="out" class="ghost">خروج</button>
+  </header>
+  <div id="stat"></div>
+  <div id="list"></div>
+  <nav id="tabs"></nav>
+</div>
+<script>
+// إلغاء تعديل Capacitor للـ fetch حتى تعمل الاتصالات والرفع بشكل طبيعي
+if(window.CapacitorWebFetch)window.fetch=window.CapacitorWebFetch;
+const $=id=>document.getElementById(id);
+const MAJORS={mech:"ميكانيكا",manu:"تصنيع",elec:"كهرباء",civil:"مدنية"};
+const KINDS={news:"الأخبار",schedule:"الجدول",events:"الفعاليات",lectures:"المحاضرات"};
+const ls={
+  get(k){try{return localStorage.getItem(k)||""}catch(e){return ""}},
+  set(k,v){try{localStorage.setItem(k,v)}catch(e){}},
+  del(k){try{localStorage.removeItem(k)}catch(e){}}
+};
+const fe=e=>{const m=(e&&e.message)||String(e);return /<!DOCTYPE|not valid JSON/i.test(m)?"رابط Supabase غير صحيح أو المشروع متوقف. الشكل الصحيح: https://xxxx.supabase.co":m};
+let sb=null,me=null,kind="news",major="",chan=null,deb=null,tick=null;
+const norm=v=>{
+  const d=v.replace(/[\s\-()]/g,"").replace(/[٠-٩]/g,c=>"٠١٢٣٤٥٦٧٨٩".indexOf(c));
+  const m=d.match(/^(?:\+?249|00249|0)?([19]\d{8})$/);
+  return m?"+249"+m[1]:"";
+};
+const err=t=>{$("err").textContent=t};
+const status=t=>{$("stat").textContent=t};
+
+Object.keys(MAJORS).forEach(k=>{
+  const b=document.createElement("button");b.textContent=MAJORS[k];
+  b.onclick=()=>{major=k;[...$("majors").children].forEach(x=>x.classList.toggle("sel",x===b))};
+  $("majors").appendChild(b);
+});
+Object.keys(KINDS).forEach(k=>{
+  const b=document.createElement("button");b.textContent=KINDS[k];b.dataset.k=k;
+  b.onclick=()=>{kind=k;[...$("tabs").children].forEach(x=>x.classList.toggle("on",x.dataset.k===k));load()};
+  $("tabs").appendChild(b);
+});
+
+$("go").onclick=async()=>{
+  const name=$("name").value.trim(),phone=norm($("phone").value);
+  if(!name)return err("اكتب اسمك");
+  if(!phone)return err("رقم الهاتف غير صحيح. مثال: 0912345678");
+  if(!major)return err("اختر التخصص");
+  err("");$("go").disabled=true;
+  const {error}=await sb.from("students").upsert({phone,name,major});
+  $("go").disabled=false;
+  if(error)return err("تعذر التسجيل: "+fe(error));
+  me={name,phone,major};ls.set("me",JSON.stringify(me));enter();
+};
+$("out").onclick=()=>{
+  if(!confirm("تسجيل الخروج؟"))return;
+  ls.del("me");me=null;clearInterval(tick);
+  if(chan){sb.removeChannel(chan);chan=null}
+  $("app").hidden=true;$("login").hidden=false;
+};
+
+function enter(){
+  $("login").hidden=true;$("app").hidden=false;
+  $("who").textContent=me.name;$("mj").textContent="تخصص "+MAJORS[me.major];
+  [...$("tabs").children].forEach(x=>x.classList.toggle("on",x.dataset.k===kind));
+  load();live();
+  clearInterval(tick);tick=setInterval(load,30000);
+}
+async function load(){
+  if(!me)return;
+  const {data,error}=await sb.from("posts").select("*").eq("kind",kind).contains("majors",[me.major]).order("created_at",{ascending:false});
+  if(error){status("تعذر التحميل: "+fe(error));return}
+  render(data);
+}
+function live(){
+  if(chan)sb.removeChannel(chan);
+  chan=sb.channel("posts-live")
+    .on("postgres_changes",{event:"*",schema:"public",table:"posts"},()=>{clearTimeout(deb);deb=setTimeout(load,250)})
+    .subscribe(s=>status(s==="SUBSCRIBED"?"متصل: تصلك المنشورات فوراً":"جارٍ الاتصال..."));
+}
+function render(rows){
+  const box=$("list");box.innerHTML="";
+  if(!rows.length){
+    const d=document.createElement("div");d.className="empty";
+    d.textContent="لا توجد منشورات في "+KINDS[kind]+" بعد";box.appendChild(d);return;
+  }
+  rows.forEach(p=>{
+    const c=document.createElement("div");c.className="post";
+    const h=document.createElement("h3");h.textContent=p.title;c.appendChild(h);
+    if(p.body){const t=document.createElement("p");t.textContent=p.body;c.appendChild(t)}
+    if(p.file_url&&/^https?:\/\//.test(p.file_url)){
+      let m;
+      if(p.file_type==="image"){m=document.createElement("img");m.loading="lazy";m.src=p.file_url}
+      else if(p.file_type==="video"){m=document.createElement("video");m.controls=true;m.preload="metadata";m.src=p.file_url}
+      else{m=document.createElement("a");m.href=p.file_url;m.target="_blank";m.rel="noopener";m.textContent="فتح المرفق"}
+      c.appendChild(m);
+    }
+    const f=document.createElement("div");f.className="meta";
+    f.textContent=(p.leader_name?"من: "+p.leader_name+" - ":"")+new Date(p.created_at).toLocaleString("ar",{dateStyle:"medium",timeStyle:"short"});
+    c.appendChild(f);box.appendChild(c);
+  });
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)load()});
+
+if(!window.supabase||!window.SUPABASE_URL||!window.SUPABASE_KEY){
+  $("login").hidden=false;$("go").disabled=true;
+  err("ربط Supabase غير مفعّل أو لا يوجد إنترنت. فعّل خيار الربط وأدخل المفاتيح في مصنع التطبيقات ثم أعد البناء");
+}else{
+  sb=window.supabase.createClient(window.SUPABASE_URL,window.SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,lock:async(n,t,f)=>await f()}});
+  try{me=JSON.parse(ls.get("me")||"null")}catch(e){me=null}
+  if(me&&MAJORS[me.major])enter();else{me=null;$("login").hidden=false}
+}
+</script>
+</body>
+</html>
