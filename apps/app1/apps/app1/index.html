@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>تطبيق قائد الدفعة</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#F6F2EC;--card:#fff;--ink:#2B1B0E;--mute:#6F5E4E;--line:#E3D8CB;--acc:#B45309;--accink:#fff;--bad:#B91C1C}
+@media (prefers-color-scheme:dark){:root{--bg:#18120C;--card:#231A11;--ink:#F4ECE2;--mute:#B7A691;--line:#3A2D20;--acc:#F59E0B;--accink:#2A1500;--bad:#F87171}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%}
+body{font-family:system-ui,"Noto Naskh Arabic",sans-serif;background:var(--bg);color:var(--ink);padding-top:env(safe-area-inset-top,0)}
+.wrap{max-width:560px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:24px;margin:8px 0}
+h2{font-size:18px;margin:0 0 6px}
+.sub{color:var(--mute);margin:0 0 12px}
+label{display:block;font-size:13px;color:var(--mute);margin:14px 0 4px}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
+.ltr{direction:ltr;text-align:left}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:12px 16px;background:var(--acc);color:var(--accink)}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.bad{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+button:disabled{opacity:.5}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:14px}
+.card input,.card select,.card textarea{background:var(--bg)}
+.chk{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:15px;margin:8px 0 0}
+.chk input{width:auto}
+.row{display:flex;gap:8px;margin-top:14px}
+.row>*{flex:1}
+.msg{font-size:13px;margin-top:10px;min-height:18px;color:var(--mute)}
+.msg.err{color:var(--bad)}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+header span{display:block;font-size:13px;color:var(--mute)}
+header button{padding:8px 12px}
+.chip{display:inline-block;font-size:12px;background:var(--acc);color:var(--accink);border-radius:20px;padding:2px 10px;margin-left:6px}
+.meta{font-size:12px;color:var(--mute);margin-top:4px}
+.item h3{margin:6px 0 0;font-size:16px}
+.empty{text-align:center;color:var(--mute);padding:24px 0}
+</style>
+</head>
+<body>
+<div id="login" class="wrap" hidden>
+  <h1>تطبيق قائد الدفعة</h1>
+  <p class="sub">سجّل دخولك لتنشر للطلاب</p>
+  <label>الاسم</label>
+  <input id="name" autocomplete="name">
+  <label>رقم الهاتف</label>
+  <input id="phone" type="tel" inputmode="tel" class="ltr" placeholder="0912345678">
+  <div class="row"><button id="go">دخول</button></div>
+  <div id="lerr" class="msg err"></div>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <div><b id="who"></b><span id="ph"></span></div>
+    <button id="out" class="ghost">خروج</button>
+  </header>
+  <div class="wrap">
+    <div class="card">
+      <h2 id="ft">نشر جديد</h2>
+      <label>نوع المنشور</label>
+      <select id="kind">
+        <option value="news">خبر</option>
+        <option value="schedule">جدول</option>
+        <option value="events">فعالية</option>
+        <option value="lectures">محاضرة</option>
+      </select>
+      <label>العنوان</label>
+      <input id="title">
+      <label>التفاصيل</label>
+      <textarea id="body" rows="5"></textarea>
+      <label>النشر لـ</label>
+      <label class="chk"><input type="checkbox" id="all" checked> كل التخصصات</label>
+      <label class="chk"><input type="checkbox" class="mj" value="mech" checked> ميكانيكا</label>
+      <label class="chk"><input type="checkbox" class="mj" value="manu" checked> تصنيع</label>
+      <label class="chk"><input type="checkbox" class="mj" value="elec" checked> كهرباء</label>
+      <label class="chk"><input type="checkbox" class="mj" value="civil" checked> مدنية</label>
+      <label>صورة أو فيديو أو ملف (اختياري، حتى 50 ميغابايت)</label>
+      <input type="file" id="file" accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx">
+      <div id="cur" hidden>
+        <div class="meta">يوجد مرفق حالي في هذا المنشور</div>
+        <label class="chk"><input type="checkbox" id="rm"> حذف المرفق الحالي</label>
+      </div>
+      <div class="row">
+        <button id="pub">نشر</button>
+        <button id="cancel" class="ghost" hidden>إلغاء التعديل</button>
+      </div>
+      <div id="msg" class="msg"></div>
+    </div>
+    <h2 style="margin-top:22px">منشوراتي</h2>
+    <div id="mine"></div>
+  </div>
+</div>
+
+<script>
+// إلغاء تعديل Capacitor للـ fetch حتى تعمل الاتصالات والرفع بشكل طبيعي
+if(window.CapacitorWebFetch)window.fetch=window.CapacitorWebFetch;
+const $=id=>document.getElementById(id);
+const MAJORS={mech:"ميكانيكا",manu:"تصنيع",elec:"كهرباء",civil:"مدنية"};
+const KINDS={news:"خبر",schedule:"جدول",events:"فعالية",lectures:"محاضرة"};
+const ls={
+  get(k){try{return localStorage.getItem(k)||""}catch(e){return ""}},
+  set(k,v){try{localStorage.setItem(k,v)}catch(e){}},
+  del(k){try{localStorage.removeItem(k)}catch(e){}}
+};
+const fe=e=>{const m=(e&&e.message)||String(e);return /<!DOCTYPE|not valid JSON/i.test(m)?"رابط Supabase غير صحيح أو المشروع متوقف. الشكل الصحيح: https://xxxx.supabase.co":m};
+let sb=null,me=null,editing=null;
+const norm=v=>{
+  const d=v.replace(/[\s\-()]/g,"").replace(/[٠-٩]/g,c=>"٠١٢٣٤٥٦٧٨٩".indexOf(c));
+  const m=d.match(/^(?:\+?249|00249|0)?([19]\d{8})$/);
+  return m?"+249"+m[1]:"";
+};
+function msg(t,bad){const m=$("msg");m.textContent=t;m.className="msg"+(bad?" err":"")}
+const mjs=()=>[...document.querySelectorAll(".mj")];
+const getMajors=()=>mjs().filter(x=>x.checked).map(x=>x.value);
+function setMajors(list){mjs().forEach(x=>x.checked=list.includes(x.value));$("all").checked=mjs().every(x=>x.checked)}
+$("all").onchange=()=>mjs().forEach(x=>x.checked=$("all").checked);
+mjs().forEach(x=>x.onchange=()=>{$("all").checked=mjs().every(y=>y.checked)});
+
+$("go").onclick=async()=>{
+  const name=$("name").value.trim(),phone=norm($("phone").value);
+  const e=t=>{$("lerr").textContent=t};
+  if(!name)return e("اكتب اسمك");
+  if(!phone)return e("رقم الهاتف غير صحيح. مثال: 0912345678");
+  e("");$("go").disabled=true;
+  const {error}=await sb.from("leaders").upsert({phone,name});
+  $("go").disabled=false;
+  if(error)return e("تعذر التسجيل: "+fe(error));
+  me={name,phone};ls.set("leader",JSON.stringify(me));enter();
+};
+$("out").onclick=()=>{
+  if(!confirm("تسجيل الخروج؟"))return;
+  ls.del("leader");me=null;resetForm();
+  $("app").hidden=true;$("login").hidden=false;
+};
+function enter(){
+  $("login").hidden=true;$("app").hidden=false;
+  $("who").textContent=me.name;$("ph").textContent=me.phone;
+  loadMine();
+}
+function resetForm(){
+  editing=null;
+  $("title").value="";$("body").value="";$("file").value="";$("rm").checked=false;$("cur").hidden=true;
+  $("kind").value="news";setMajors(Object.keys(MAJORS));
+  $("ft").textContent="نشر جديد";$("pub").textContent="نشر";$("cancel").hidden=true;
+}
+$("cancel").onclick=()=>{resetForm();msg("")};
+
+function rmFile(url){
+  const i=url.indexOf("/media/");
+  if(i>=0)sb.storage.from("media").remove([decodeURIComponent(url.slice(i+7))]);
+}
+$("pub").onclick=async()=>{
+  const title=$("title").value.trim(),body=$("body").value.trim(),majors=getMajors();
+  if(!title)return msg("اكتب العنوان",true);
+  if(!majors.length)return msg("اختر تخصصاً واحداً على الأقل",true);
+  const f=$("file").files[0];
+  if(f&&f.size>50*1024*1024)return msg("حجم الملف أكبر من 50 ميغابايت",true);
+  const btn=$("pub");btn.disabled=true;
+  const wasEdit=!!editing;
+  try{
+    let url=editing?editing.file_url:null,type=editing?editing.file_type:null,old=null;
+    if(editing&&url&&($("rm").checked||f)){old=url;url=null;type=null}
+    if(f){
+      msg("جارٍ رفع الملف، لا تغلق التطبيق...");
+      const ext=((f.name.split(".").pop()||"").replace(/[^a-zA-Z0-9]/g,"").slice(0,6))||"bin";
+      const path=Date.now()+"_"+Math.random().toString(36).slice(2,8)+"."+ext;
+      const up=await sb.storage.from("media").upload(path,f,{contentType:f.type||"application/octet-stream"});
+      if(up.error)throw new Error("فشل رفع الملف: "+up.error.message);
+      url=sb.storage.from("media").getPublicUrl(path).data.publicUrl;
+      type=f.type.startsWith("image/")?"image":f.type.startsWith("video/")?"video":"file";
+    }
+    msg("جارٍ النشر...");
+    const row={kind:$("kind").value,title,body,majors,file_url:url,file_type:type,leader_name:me.name,leader_phone:me.phone};
+    const r=editing?await sb.from("posts").update(row).eq("id",editing.id):await sb.from("posts").insert(row);
+    if(r.error)throw new Error(r.error.message);
+    if(old)rmFile(old);
+    resetForm();
+    msg(wasEdit?"تم حفظ التعديل":"تم النشر، وظهر للطلاب الآن");
+    loadMine();
+  }catch(e){msg(e instanceof TypeError?"تعذر الاتصال. تأكد من الإنترنت":fe(e),true)}
+  btn.disabled=false;
+};
+
+async function loadMine(){
+  const {data,error}=await sb.from("posts").select("*").eq("leader_phone",me.phone).order("created_at",{ascending:false});
+  const box=$("mine");box.innerHTML="";
+  if(error){box.textContent="تعذر التحميل: "+fe(error);return}
+  if(!data.length){const d=document.createElement("div");d.className="empty";d.textContent="لم تنشر شيئاً بعد";box.appendChild(d);return}
+  data.forEach(p=>{
+    const c=document.createElement("div");c.className="card item";
+    const top=document.createElement("div");
+    const chip=document.createElement("span");chip.className="chip";chip.textContent=KINDS[p.kind]||p.kind;top.appendChild(chip);
+    const h=document.createElement("h3");h.textContent=p.title;
+    const m=document.createElement("div");m.className="meta";
+    const who=p.majors.length===4?"كل التخصصات":p.majors.map(x=>MAJORS[x]).join("، ");
+    m.textContent=who+(p.file_url?" - مع مرفق":"")+" - "+new Date(p.created_at).toLocaleString("ar",{dateStyle:"medium",timeStyle:"short"});
+    const r=document.createElement("div");r.className="row";
+    const eb=document.createElement("button");eb.className="ghost";eb.textContent="تعديل";eb.onclick=()=>edit(p);
+    const db=document.createElement("button");db.className="bad";db.textContent="حذف";db.onclick=()=>del(p);
+    r.appendChild(eb);r.appendChild(db);
+    c.appendChild(top);c.appendChild(h);c.appendChild(m);c.appendChild(r);box.appendChild(c);
+  });
+}
+function edit(p){
+  editing=p;
+  $("kind").value=p.kind;$("title").value=p.title;$("body").value=p.body||"";setMajors(p.majors);
+  $("file").value="";$("rm").checked=false;$("cur").hidden=!p.file_url;
+  $("ft").textContent="تعديل المنشور";$("pub").textContent="حفظ التعديل";$("cancel").hidden=false;
+  msg("");window.scrollTo({top:0,behavior:"smooth"});
+}
+async function del(p){
+  if(!confirm("حذف «"+p.title+"» نهائياً؟ سيختفي من عند الطلاب"))return;
+  const {error}=await sb.from("posts").delete().eq("id",p.id);
+  if(error)return msg("تعذر الحذف: "+fe(error),true);
+  if(p.file_url)rmFile(p.file_url);
+  if(editing&&editing.id===p.id)resetForm();
+  loadMine();
+}
+
+if(!window.supabase||!window.SUPABASE_URL||!window.SUPABASE_KEY){
+  $("login").hidden=false;$("go").disabled=true;
+  $("lerr").textContent="ربط Supabase غير مفعّل أو لا يوجد إنترنت. فعّل خيار الربط وأدخل المفاتيح في مصنع التطبيقات ثم أعد البناء";
+}else{
+  sb=window.supabase.createClient(window.SUPABASE_URL,window.SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,lock:async(n,t,f)=>await f()}});
+  try{me=JSON.parse(ls.get("leader")||"null")}catch(e){me=null}
+  if(me&&me.phone)enter();else{me=null;$("login").hidden=false}
+}
+</script>
+</body>
+  </html>
